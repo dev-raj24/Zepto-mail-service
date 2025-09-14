@@ -32,10 +32,10 @@ export async function POST(req: Request): Promise<Response> {
 
       let replyTo: { address: string; name: string }[] | undefined;
       let emailBody = body;
-      const emailFrom = { address: defaultFrom, name: companyName };
+      let emailFrom = { address: defaultFrom, name: companyName };
 
       if (isAdmin) {
-        // Admin replies go to all customers
+        // Admin receives normal email
         replyTo = customers.map(c => ({ address: c, name: c.split("@")[0] }));
       } else {
         if (mode === "DEFAULT") {
@@ -45,19 +45,19 @@ export async function POST(req: Request): Promise<Response> {
           // Customer cannot reply
           replyTo = undefined;
           emailBody += `<p style="color:red; font-style:italic;">⚠️ This is a read-only message. Please do not reply to this email.</p>`;
-          emailFrom.address = "no-reply@codekraftsolutions.com"; // Force no-reply
+          emailFrom.address = "no-reply@codekraftsolutions.com";
         }
       }
 
+      // Send only to this recipient
       const emailData: Record<string, unknown> = {
         from: emailFrom,
-        to: to.map(addr => ({ email_address: { address: addr } })),
+        to: [{ email_address: { address: recipient } }],
         subject,
         htmlbody: emailBody,
         ...(cc && cc.length ? { cc: cc.map(addr => ({ email_address: { address: addr } })) } : {}),
         ...(bcc && bcc.length ? { bcc: bcc.map(addr => ({ email_address: { address: addr } })) } : {}),
         ...(replyTo && { reply_to: replyTo }),
-      
       };
 
       const response = await fetch(apiUrl, {
