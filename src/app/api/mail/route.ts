@@ -32,17 +32,20 @@ export async function POST(req: Request): Promise<Response> {
 
       let replyTo: { address: string; name: string }[] | undefined;
       let emailBody = body;
-      let emailFrom = { address: defaultFrom, name: companyName };
+      const emailFrom = { address: defaultFrom, name: companyName };
 
       if (isAdmin) {
+        // Admin replies go to all customers
         replyTo = customers.map(c => ({ address: c, name: c.split("@")[0] }));
       } else {
         if (mode === "DEFAULT") {
+          // Customer can reply to admin
           replyTo = [{ address: adminEmail, name: adminEmail.split("@")[0] }];
         } else if (mode === "READ_ONLY") {
+          // Customer cannot reply
           replyTo = undefined;
           emailBody += `<p style="color:red; font-style:italic;">⚠️ This is a read-only message. Please do not reply to this email.</p>`;
-          emailFrom.address = "no-reply@codekraftsolutions.com";
+          emailFrom.address = "no-reply@codekraftsolutions.com"; // Force no-reply
         }
       }
 
@@ -54,6 +57,7 @@ export async function POST(req: Request): Promise<Response> {
         ...(cc && cc.length ? { cc: cc.map(addr => ({ email_address: { address: addr } })) } : {}),
         ...(bcc && bcc.length ? { bcc: bcc.map(addr => ({ email_address: { address: addr } })) } : {}),
         ...(replyTo && { reply_to: replyTo }),
+      
       };
 
       const response = await fetch(apiUrl, {
