@@ -1,43 +1,60 @@
 export async function POST(req: Request): Promise<Response> {
   type RequestBody = {
     to: string[];
+    cc?: string[];
+    bcc?: string[];
     subject: string;
     body: string;
-    companyName:string,
+    companyName: string;
+    adminEmail: string;
     mode: "DEFAULT" | "READ_ONLY";
-    replyMapping?: Record<string, string>;
   };
 
-  const {  companyName ,to, subject, body, mode, replyMapping }: RequestBody = await req.json();
+  const { companyName, to, cc, bcc, subject, body, adminEmail, mode }: RequestBody = await req.json();
 
-  if (!to || !Array.isArray(to) || !subject || !body || !mode) {
+  if (!to?.length || !subject || !body || !adminEmail || !mode) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
   }
 
   const apiKey = process.env.ZEPTO_SECRET ?? "";
   const apiUrl = process.env.apiUrl ?? "";
-  const from = process.env.from ?? "";
+  const defaultFrom = process.env.from ?? "";
 
-  if (!apiKey || !apiUrl || !from) {
+  if (!apiKey || !apiUrl || !defaultFrom) {
     return new Response(JSON.stringify({ error: "Server not configured" }), { status: 500 });
   }
 
   try {
+    const customers = to.filter(email => email !== adminEmail);
+
     for (const recipient of to) {
-      const replyTo = mode === "DEFAULT"
-        ? replyMapping?.[recipient] || from
-        : undefined;
+      const isAdmin = recipient === adminEmail;
+
+      let replyTo: { address: string; name: string }[] | undefined;
+      let emailBody = body;
+      let emailFrom = { address: defaultFrom, name: companyName };
+
+      if (isAdmin) {
+        replyTo = customers.map(c => ({ address: c, name: c.split("@")[0] }));
+      } else {
+        if (mode === "DEFAULT") {
+          replyTo = [{ address: adminEmail, name: adminEmail.split("@")[0] }];
+        } else if (mode === "READ_ONLY") {
+          replyTo = undefined;
+          emailBody += `<p style="color:red; font-style:italic;">⚠️ This is a read-only message. Please do not reply to this email.</p>`;
+          emailFrom.address = "no-reply@codekraftsolutions.com";
+        }
+      }
 
       const emailData: Record<string, unknown> = {
-        from: { address: from, name: companyName },
-        to: [{ email_address: { address: recipient } }],
+        from: emailFrom,
+        to: to.map(addr => ({ email_address: { address: addr } })),
         subject,
-        htmlbody: body,
+        htmlbody: emailBody,
+        ...(cc && cc.length ? { cc: cc.map(addr => ({ email_address: { address: addr } })) } : {}),
+        ...(bcc && bcc.length ? { bcc: bcc.map(addr => ({ email_address: { address: addr } })) } : {}),
+        ...(replyTo && { reply_to: replyTo }),
       };
-
-      if (replyTo) {
-        emailData.reply_to = [{ address: replyTo, name: replyTo.split("@")[0] }];
-      }
 
       const response = await fetch(apiUrl, {
         method: "POST",
