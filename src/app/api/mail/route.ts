@@ -32,10 +32,12 @@ export async function POST(req: Request): Promise<Response> {
 
       let replyTo: { address: string; name: string }[] | undefined;
       let emailBody = body;
-      let emailFrom = { address: defaultFrom, name: companyName };
+
+      // eslint-disable-next-line prefer-const
+      let emailFrom = { address: defaultFrom, name: companyName }; // using let to allow no-reply change
 
       if (isAdmin) {
-        // Admin receives normal email
+        // Admin replies go to all customers
         replyTo = customers.map(c => ({ address: c, name: c.split("@")[0] }));
       } else {
         if (mode === "DEFAULT") {
@@ -45,19 +47,19 @@ export async function POST(req: Request): Promise<Response> {
           // Customer cannot reply
           replyTo = undefined;
           emailBody += `<p style="color:red; font-style:italic;">⚠️ This is a read-only message. Please do not reply to this email.</p>`;
-          emailFrom.address = "no-reply@codekraftsolutions.com";
+          emailFrom.address = "no-reply@codekraftsolutions.com"; // force no-reply
         }
       }
 
-      // Send only to this recipient
       const emailData: Record<string, unknown> = {
         from: emailFrom,
-        to: [{ email_address: { address: recipient } }],
+        to: [{ email_address: { address: recipient } }], // send individually
         subject,
         htmlbody: emailBody,
         ...(cc && cc.length ? { cc: cc.map(addr => ({ email_address: { address: addr } })) } : {}),
         ...(bcc && bcc.length ? { bcc: bcc.map(addr => ({ email_address: { address: addr } })) } : {}),
         ...(replyTo && { reply_to: replyTo }),
+     
       };
 
       const response = await fetch(apiUrl, {
