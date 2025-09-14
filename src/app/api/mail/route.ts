@@ -1,50 +1,51 @@
-export async function POST(req: Request) {
-  const { to, subject, body, mode, replyMapping } = await req.json();
+export async function POST(req: Request): Promise<Response> {
+  type RequestBody = {
+    to: string[];
+    subject: string;
+    body: string;
+    companyName:string,
+    mode: "DEFAULT" | "READ_ONLY";
+    replyMapping?: Record<string, string>;
+  };
 
-  if (!to || !subject || !body || !mode) {
+  const {  companyName ,to, subject, body, mode, replyMapping }: RequestBody = await req.json();
+
+  if (!to || !Array.isArray(to) || !subject || !body || !mode) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 });
   }
 
-  const apiKey = process.env.ZEPTO_SECRET;
-  const apiUrl = process.env.apiUrl ;
-  const from = process.env.from ; // Verified sender
+  const apiKey = process.env.ZEPTO_SECRET ?? "";
+  const apiUrl = process.env.apiUrl ?? "";
+  const from = process.env.from ?? "";
+
+  if (!apiKey || !apiUrl || !from) {
+    return new Response(JSON.stringify({ error: "Server not configured" }), { status: 500 });
+  }
 
   try {
-    for (let i = 0; i < to.length; i++) {
-      const recipient = to[i];
+    for (const recipient of to) {
+      const replyTo = mode === "DEFAULT"
+        ? replyMapping?.[recipient] || from
+        : undefined;
 
-      // Dynamic reply-to
-      let replyTo: string;
-      switch (mode) {
-        case 1: // Use mapping if exists, else default to sender
-          replyTo = (replyMapping && replyMapping[recipient]) || from;
-          break;
-        case 2: // Recipient cannot reply
-          replyTo = "no-reply@codekraftsolutions.com"
-          break;
-        case 3: // Mail only goes to admin(s)
-          if (!(replyMapping && replyMapping[recipient])) continue; // skip if recipient not in mapping
-          replyTo = from;
-          break;
-        default:
-          replyTo = from;
-      }
-
-      const emailData = {
-        from: { address: from, name: "Port Flow" },
+      const emailData: Record<string, unknown> = {
+        from: { address: from, name: companyName },
         to: [{ email_address: { address: recipient } }],
-        reply_to: [{ address: replyTo, name: replyTo.split("@")[0] }],
         subject,
-        htmlbody: body
+        htmlbody: body,
       };
+
+      if (replyTo) {
+        emailData.reply_to = [{ address: replyTo, name: replyTo.split("@")[0] }];
+      }
 
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: apiKey
+          Authorization: apiKey,
         },
-        body: JSON.stringify(emailData)
+        body: JSON.stringify(emailData),
       });
 
       if (!response.ok) {
